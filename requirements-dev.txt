@@ -1,0 +1,4 @@
+genlayer-py>=0.16.0
+genlayer-test>=0.29.0
+pytest>=8.0.0
+requests>=2.31.0
