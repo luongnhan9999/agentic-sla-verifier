@@ -4,6 +4,7 @@ from genlayer import *
 from dataclasses import dataclass
 import json
 from urllib.parse import urlparse
+from datetime import datetime
 
 UserError = gl.vm.UserError
 
@@ -130,6 +131,7 @@ class SLAPerformanceAudit:
     verdict: str      # SLA_COMPLIANT | SLA_DEGRADED | SLA_BREACHED | ABORT
     confidence: bigint
     evaluation_summary: str
+    audited_epoch: bigint
 
 
 class Contract(gl.Contract):
@@ -137,12 +139,30 @@ class Contract(gl.Contract):
     audits: TreeMap[str, SLAPerformanceAudit]
     service_counter: bigint
     total_audits_logged: bigint
+    sla_validity_window: bigint
     sla_registry_arbiter: str
 
     def __init__(self):
         self.service_counter = bigint(0)
         self.total_audits_logged = bigint(0)
+        self.sla_validity_window = bigint(86400)  # 24 hours validity
         self.sla_registry_arbiter = _addr_str(gl.message.sender_address)
+
+    def _get_current_timestamp(self) -> bigint:
+        """Derive trusted timestamp from transaction execution context."""
+        try:
+            dt_str = str(gl.message_raw.get("datetime", ""))
+            if not dt_str:
+                raise UserError("Trusted timestamp unavailable: gl.message_raw missing 'datetime'")
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            ts = bigint(int(dt.timestamp()))
+            if ts <= bigint(0):
+                raise UserError("Invalid timestamp resolved")
+            return ts
+        except UserError:
+            raise
+        except Exception as e:
+            raise UserError(f"Timestamp extraction failed: {str(e)}")
 
     @gl.public.write
     def register_service_profile(
@@ -192,6 +212,8 @@ class Contract(gl.Contract):
         if not _is_origin_valid(telemetry_log_url, srv.status_page_base):
             raise UserError("Telemetry URL origin does not match registered service status host")
 
+        current_ts = self._get_current_timestamp()
+
         srv.total_audits += bigint(1)
         self.total_audits_logged += bigint(1)
         aid = service_id + "_" + str(srv.total_audits)
@@ -204,6 +226,7 @@ class Contract(gl.Contract):
             verdict="",
             confidence=bigint(0),
             evaluation_summary="",
+            audited_epoch=current_ts,
         )
         self.services[service_id] = srv
 
@@ -233,11 +256,15 @@ DECLARED SLA TERMS:
 FETCHED TELEMETRY & HEALTH REPORT:
 {log_text[:4000]}
 
-Rules:
+EVIDENCE BINDING MANDATE:
+1. Verify that the telemetry evidence above explicitly and unambiguously corresponds to SERVICE NAME '{s_name}'.
+2. If the telemetry report is for an unrelated endpoint or does not mention/validate metrics for '{s_name}', you MUST output verdict 'ABORT' with reason 'telemetry_target_mismatch'.
+
+Classification Rules:
 - SLA_COMPLIANT (conf >= 75): Service meets uptime requirements, healthy response times, zero major error rates, and adheres to declared terms.
 - SLA_DEGRADED (conf >= 75): Partial service degradation, transient 429 rate limits, elevated latency, but still functional.
 - SLA_BREACHED (conf >= 75): Severe outages, sustained 5xx server errors, unhandled exceptions, or direct violation of uptime guarantees.
-- ABORT: Status log requires login, captcha-blocked, rate-limited, or unreadable.
+- ABORT: Telemetry target mismatch, status log requires login, captcha-blocked, rate-limited, or unreadable.
 
 OUTPUT ONLY STRICT JSON:
 {{
@@ -343,10 +370,16 @@ OUTPUT ONLY STRICT JSON:
 
     @gl.public.view
     def is_service_healthy(self, audit_id: str) -> bool:
-        """Lightweight status query for automated routing or agentic payment gateways."""
+        """Lightweight status query enforcing report freshness."""
         if audit_id not in self.audits:
             return False
-        return self.audits[audit_id].status == "COMPLIANT"
+        a = self.audits[audit_id]
+        if a.status != "COMPLIANT":
+            return False
+        current_ts = self._get_current_timestamp()
+        if (current_ts - a.audited_epoch) > self.sla_validity_window:
+            return False
+        return True
 
     @gl.public.view
     def get_service(self, service_id: str) -> str:
@@ -375,6 +408,7 @@ OUTPUT ONLY STRICT JSON:
             "verdict": a.verdict,
             "confidence": str(a.confidence),
             "evaluation_summary": a.evaluation_summary,
+            "audited_epoch": str(a.audited_epoch),
         })
 
     @gl.public.view
@@ -382,4 +416,6 @@ OUTPUT ONLY STRICT JSON:
         return json.dumps({
             "total_registered_services": str(self.service_counter),
             "total_audits_logged": str(self.total_audits_logged),
+            "sla_validity_window_seconds": str(self.sla_validity_window),
+            "sla_registry_arbiter": self.sla_registry_arbiter,
         })

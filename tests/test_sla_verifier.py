@@ -217,3 +217,25 @@ def test_status_mapping_rules():
         else:
             status = "ESCALATED"
         assert status == expected_status
+
+
+def test_freshness_window_logic():
+    sla_validity_window = 86400  # 24 hours
+    current_ts = 1726300000
+
+    # Fresh compliant audit
+    audit_fresh_epoch = current_ts - 3600  # 1 hour ago
+    status = "COMPLIANT"
+    is_healthy = (status == "COMPLIANT") and ((current_ts - audit_fresh_epoch) <= sla_validity_window)
+    assert is_healthy is True
+
+    # Stale compliant audit (> 24 hours old)
+    audit_stale_epoch = current_ts - 90000  # 25 hours ago
+    is_healthy_stale = (status == "COMPLIANT") and ((current_ts - audit_stale_epoch) <= sla_validity_window)
+    assert is_healthy_stale is False
+
+    # Fresh but non-compliant audit
+    status_degraded = "DEGRADED"
+    is_healthy_degraded = (status_degraded == "COMPLIANT") and ((current_ts - audit_fresh_epoch) <= sla_validity_window)
+    assert is_healthy_degraded is False
+

@@ -12,7 +12,7 @@
 
 ## 🚀 Live Studionet Deployment
 
-- **CONTRACT_ADDRESS**: `0x41421556bB32d6E806A3628fcc8993d414E2Ae10`
+- **CONTRACT_ADDRESS**: `0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825`
 - **NETWORK**: `studionet`
 - **Chain ID**: `61999`
 - **RPC Endpoint**: `https://studio.genlayer.com/api`
@@ -26,7 +26,7 @@ from genlayer_py import create_client, create_account, generate_private_key, stu
 account = create_account(generate_private_key())
 client = create_client(studionet, account=account)
 stats = client.read_contract(
-    address="0x41421556bB32d6E806A3628fcc8993d414E2Ae10",
+    address="0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825",
     function_name="get_stats",
     args=[]
 )
@@ -34,7 +34,7 @@ print("Stats:", stats)
 ```
 **Real On-Chain Output:**
 ```json
-{"total_registered_services": "0", "total_audits_logged": "0"}
+{"total_registered_services": "0", "total_audits_logged": "0", "sla_validity_window_seconds": "86400", "sla_registry_arbiter": "0x52c5e913fc54d00cba5df3312268bf66035661f8"}
 ```
 
 ---
@@ -47,7 +47,7 @@ Below is an illustrative execution trace demonstrating the lifecycle of an AI ag
 ```python
 # Operator registers their autonomous agent endpoint and SLA requirements
 tx = client.write_contract(
-    address="0x41421556bB32d6E806A3628fcc8993d414E2Ae10",
+    address="0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825",
     function_name="register_service_profile",
     args=[
         "Eliza Autonomous Financial Agent",
@@ -62,7 +62,7 @@ tx = client.write_contract(
 ```python
 # Downstream protocol or automated keeper triggers an SLA performance verification
 tx = client.write_contract(
-    address="0x41421556bB32d6E806A3628fcc8993d414E2Ae10",
+    address="0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825",
     function_name="audit_service_sla",
     args=["1", "https://status.agentnetwork.io/health/v1"]
 )
@@ -72,7 +72,7 @@ tx = client.write_contract(
 #### 3. Inspect Audit Attestation
 ```python
 audit_json = client.read_contract(
-    address="0x41421556bB32d6E806A3628fcc8993d414E2Ae10",
+    address="0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825",
     function_name="get_audit",
     args=["1_1"]
 )
@@ -86,15 +86,16 @@ audit_json = client.read_contract(
   "status": "COMPLIANT",
   "verdict": "SLA_COMPLIANT",
   "confidence": "92",
-  "evaluation_summary": "Telemetry shows 99.98% uptime over rolling 24h, avg response latency 180ms, 0 server errors detected."
+  "evaluation_summary": "Telemetry shows 99.98% uptime over rolling 24h, avg response latency 180ms, 0 server errors detected.",
+  "audited_epoch": "1726300000"
 }
 ```
 
 #### 4. Automated Smart Contract Routing Check
 ```python
-# Payment streaming or routing contract verifies service health:
+# Payment streaming or routing contract verifies service health (checks COMPLIANT status and freshness window):
 is_healthy = client.read_contract(
-    address="0x41421556bB32d6E806A3628fcc8993d414E2Ae10",
+    address="0xfe4AABA6a786E33fb44fa53C2c8985A8133D3825",
     function_name="is_service_healthy",
     args=["1_1"]
 )
